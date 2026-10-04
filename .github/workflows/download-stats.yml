@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   snapshot:
+    if: github.repository == 'CHARL3X/GLIDE-Synth-Cardputer-ADV'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

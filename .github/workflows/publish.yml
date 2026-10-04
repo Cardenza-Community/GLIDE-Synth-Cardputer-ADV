@@ -1,0 +1,77 @@
+name: Publish GLIDE
+on:
+  push:
+    branches: [nightly]
+    tags: ['v*']
+    paths: ['src/**', 'lib/**', 'support/**', 'platformio.ini', 'partitions.csv', '.github/workflows/publish.yml']
+  pull_request:
+    paths: ['src/**', 'lib/**', 'support/**', 'platformio.ini', 'partitions.csv', '.github/workflows/publish.yml']
+  workflow_dispatch:
+    inputs:
+      release_type:
+        type: choice
+        options: [nightly, release]
+        default: nightly
+        description: Release type
+      tag:
+        type: string
+        description: Existing numeric Cardenza Release tag
+      delete_previous:
+        type: choice
+        options: ['default', 'true', 'false']
+        default: 'default'
+        description: Delete older versions (default Release false, Nightly true)
+permissions:
+  contents: read
+concurrency:
+  group: glide-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'Cardenza-Community/GLIDE-Synth-Cardputer-ADV'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_PUBLISH_TOKEN: ${{ secrets.LAUNCHER_APP_TOKEN != '' }}
+      RELEASE_TYPE: ${{ inputs.release_type || (startsWith(github.ref, 'refs/tags/') && 'release' || 'nightly') }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      DELETE_PREVIOUS: ${{ inputs.delete_previous || 'default' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_type == 'release' && inputs.tag || inputs.release_type == 'nightly' && 'nightly' || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build and check Cardenza
+        run: |
+          python -m pip install platformio==6.2.0
+          pio run -e cardenza -e native
+          .pio/build/native/program
+          python support/test_launcher_nvs_guard.py
+          python support/test_cardenza_flash_mode.py
+      - name: Upload BIN and notices
+        if: github.event_name != 'pull_request' && env.HAS_PUBLISH_TOKEN == 'true'
+        env:
+          LAUNCHER_APP_TOKEN: ${{ secrets.LAUNCHER_APP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${LAUNCHER_APP_TOKEN:?Configure the GLIDE App Token}"
+          if [ "$RELEASE_TYPE" = release ]; then
+            [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+          fi
+          url="https://uullfvoakowofzhaqdix.supabase.co/functions/v1/publish"
+          if [ "$DELETE_PREVIOUS" != default ]; then
+            url="$url?delete_previous=$DELETE_PREVIOUS"
+          fi
+          curl --fail-with-body --max-time 180 --retry 2 "$url" \
+            -H "Authorization: Bearer $LAUNCHER_APP_TOKEN" \
+            -H "X-App-Id: 1196fee8-6aa0-4222-9ff5-870ef99a298e" \
+            -H "X-Target: cardenza" \
+            -H "X-Repository: $GITHUB_REPOSITORY" \
+            -H "X-Source-Commit: $(git rev-parse HEAD)" \
+            -H "X-Release-Tag: $RELEASE_TAG" \
+            -F "release_type=$RELEASE_TYPE" \
+            -F 'firmware=@dist/cardenza/GLIDE.bin' -F 'notices=@dist/cardenza/NOTICES.txt'
