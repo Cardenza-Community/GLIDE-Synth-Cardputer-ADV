@@ -1,3 +1,7 @@
+> **Cardenza community fork:** build the v3.4 runtime-detecting port for original Cardputer, ADV and Cardenza with
+> `pio run -e unified` (or the `cardenza` alias). See [Cardenza support](CARDENZA.md) for source provenance,
+> installation and validation. Upstream's v3.6 Cardputer BIN is kept separately.
+
 <p align="center">
   <img src="assets/glide-logo.png" alt="GLIDE" width="440">
 </p>
